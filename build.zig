@@ -77,32 +77,6 @@ pub fn build(b: *std.Build) !void {
         "Update translation files",
     );
 
-    // Ghostty resources like terminfo, shell integration, themes, etc.
-    const resources = try buildpkg.GhosttyResources.init(b, &config, &deps);
-    const i18n = if (config.i18n) try buildpkg.GhosttyI18n.init(b, &config) else null;
-
-    // Ghostty executable, the actual runnable Ghostty program.
-    const exe = try buildpkg.GhosttyExe.init(b, &config, &deps);
-
-    // Ghostty docs
-    const docs = try buildpkg.GhosttyDocs.init(b, &deps);
-    if (config.emit_docs) {
-        docs.install();
-    } else if (config.target.result.os.tag.isDarwin()) {
-        // If we aren't emitting docs we need to emit a placeholder so
-        // our macOS xcodeproject builds since it expects the `share/man`
-        // directory to exist to copy into the app bundle.
-        docs.installDummy(b.getInstallStep());
-    }
-
-    // Ghostty webdata
-    const webdata = try buildpkg.GhosttyWebdata.init(b, &deps);
-    if (config.emit_webdata) webdata.install();
-
-    // Ghostty bench tools
-    const bench = try buildpkg.GhosttyBench.init(b, &deps);
-    if (config.emit_bench) bench.install();
-
     // Ghostty dist tarball
     const dist = try buildpkg.GhosttyDist.init(b, &config);
     {
@@ -169,6 +143,62 @@ pub fn build(b: *std.Build) !void {
         const xcframework = buildpkg.GhosttyLibVt.xcframework(&apple_libs, b);
         b.getInstallStep().dependOn(xcframework.step);
     }
+
+    // Zig module tests
+    {
+        const mod_vt_test = b.addTest(.{
+            .root_module = mod.vt,
+            .filters = test_filters,
+        });
+        const mod_vt_test_run = b.addRunArtifact(mod_vt_test);
+        test_lib_vt_step.dependOn(&mod_vt_test_run.step);
+
+        const mod_vt_c_test = b.addTest(.{
+            .root_module = mod.vt_c,
+            .filters = test_filters,
+        });
+        const mod_vt_c_test_run = b.addRunArtifact(mod_vt_c_test);
+        test_lib_vt_step.dependOn(&mod_vt_c_test_run.step);
+    }
+
+    // libghostty-vt builds should not initialize app-only artifacts. Many of
+    // those artifacts use lazy dependencies, and package managers that build
+    // with --system must provide every initialized lazy dependency even when
+    // the final install step doesn't depend on it.
+    if (config.emit_lib_vt) {
+        try run_step.addError("cannot run app when building libghostty-vt", .{});
+        try run_valgrind_step.addError("cannot run app under valgrind when building libghostty-vt", .{});
+        try test_valgrind_step.addError("cannot run app tests under valgrind when building libghostty-vt", .{});
+        try translations_step.addError("cannot update translations when building libghostty-vt", .{});
+
+        return;
+    }
+
+    // Ghostty resources like terminfo, shell integration, themes, etc.
+    const resources = try buildpkg.GhosttyResources.init(b, &config, &deps);
+    const i18n = if (config.i18n) try buildpkg.GhosttyI18n.init(b, &config) else null;
+
+    // Ghostty executable, the actual runnable Ghostty program.
+    const exe = try buildpkg.GhosttyExe.init(b, &config, &deps);
+
+    // Ghostty docs
+    const docs = try buildpkg.GhosttyDocs.init(b, &deps);
+    if (config.emit_docs) {
+        docs.install();
+    } else if (config.target.result.os.tag.isDarwin()) {
+        // If we aren't emitting docs we need to emit a placeholder so
+        // our macOS xcodeproject builds since it expects the `share/man`
+        // directory to exist to copy into the app bundle.
+        docs.installDummy(b.getInstallStep());
+    }
+
+    // Ghostty webdata
+    const webdata = try buildpkg.GhosttyWebdata.init(b, &deps);
+    if (config.emit_webdata) webdata.install();
+
+    // Ghostty bench tools
+    const bench = try buildpkg.GhosttyBench.init(b, &deps);
+    if (config.emit_bench) bench.install();
 
     // Helpgen
     if (config.emit_helpgen) deps.help_strings.install();
@@ -316,23 +346,6 @@ pub fn build(b: *std.Build) !void {
         run_cmd.addArtifactArg(valgrind_exe.exe);
         if (b.args) |args| run_cmd.addArgs(args);
         run_valgrind_step.dependOn(&run_cmd.step);
-    }
-
-    // Zig module tests
-    {
-        const mod_vt_test = b.addTest(.{
-            .root_module = mod.vt,
-            .filters = test_filters,
-        });
-        const mod_vt_test_run = b.addRunArtifact(mod_vt_test);
-        test_lib_vt_step.dependOn(&mod_vt_test_run.step);
-
-        const mod_vt_c_test = b.addTest(.{
-            .root_module = mod.vt_c,
-            .filters = test_filters,
-        });
-        const mod_vt_c_test_run = b.addRunArtifact(mod_vt_c_test);
-        test_lib_vt_step.dependOn(&mod_vt_c_test_run.step);
     }
 
     // Tests (skip when building libghostty-vt)

@@ -43,15 +43,30 @@ stdenv.mkDerivation (finalAttrs: {
   # See: https://codeberg.org/ziglang/zig/issues/32121
   #
   # Workaround: override `linkFarm` with a copy-farm so deps are real directories, not symlinks.
+  #
+  # libghostty-vt only needs a small subset of the root Zig package cache.
+  # Keep using the generated cache expression as the source of truth, but
+  # filter out app-only dependencies so downstream consumers don't fetch or
+  # build unrelated packages such as GTK, Wayland, Sentry, themes, or fonts.
   deps = callPackage ../build.zig.zon.nix {
     name = "${finalAttrs.pname}-cache-${finalAttrs.version}";
-    linkFarm = name: entries:
+    linkFarm = name: entries: let
+      # Required by SharedDeps for Unicode/grapheme data generation.
+      isUucode = e: e.name == "uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9";
+
+      # Required by pkg/highway when libghostty-vt builds with SIMD.
+      isHighway = e: (e.path.name or null) == "highway";
+
+      includeEntry = e:
+        isUucode e || (simd && isHighway e);
+      filteredEntries = builtins.filter includeEntry entries;
+    in
       runCommand name {} ''
         mkdir -p $out
         ${lib.concatMapStringsSep "\n" (e: ''
             cp -rL ${e.path} $out/${e.name}
           '')
-          entries}
+          filteredEntries}
       '';
   };
 
