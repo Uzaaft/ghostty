@@ -166,8 +166,11 @@ pub const Shaper = struct {
         // This keeps track of the cell starting x and cluster.
         var cell_offset: CellOffset = .{};
 
-        // Convert all our info/pos to cells and set it.
+        // Convert all our info/pos to cells and set it. The exact
+        // number of cells is known up front so reserve capacity rather
+        // than re-growing mid-loop (the CoreText shaper does the same).
         self.cell_buf.clearRetainingCapacity();
+        try self.cell_buf.ensureUnusedCapacity(self.alloc, info.len);
         for (info, pos) |info_v, pos_v| {
             // info_v.cluster is the index into our codepoints array. We use it
             // to get the original cluster.
@@ -235,7 +238,7 @@ pub const Shaper = struct {
             // For debugging positions, turn this on:
             //try self.debugPositions(run_offset, cell_offset, pos_v, index);
 
-            try self.cell_buf.append(self.alloc, .{
+            self.cell_buf.appendAssumeCapacity(.{
                 .x = @intCast(cell_offset.cluster),
                 .x_offset = @intCast(x_offset),
                 .y_offset = @intCast(y_offset),
