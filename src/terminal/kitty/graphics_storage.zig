@@ -120,6 +120,11 @@ pub const ImageStorage = struct {
     /// The set of placements for loaded images.
     placements: PlacementMap = .{},
 
+    /// True once a pin-backed placement has been added. This is conservative:
+    /// it may remain true after all pin-backed placements are removed, but a
+    /// false value proves that a garbage-placement sweep cannot remove anything.
+    may_have_pin_placements: bool = false,
+
     /// Non-null if there is an in-progress loading image.
     loading: ?*LoadingImage = null,
 
@@ -371,6 +376,7 @@ pub const ImageStorage = struct {
             };
         }
         gop.value_ptr.* = p;
+        if (p.location == .pin) self.may_have_pin_placements = true;
 
         self.markMutated(io);
     }
@@ -381,19 +387,26 @@ pub const ImageStorage = struct {
         self: *ImageStorage,
         s: *terminal.Screen,
     ) bool {
+        if (!self.may_have_pin_placements) return false;
+
         var removed = false;
+        var retained_pin = false;
         var it = self.placements.iterator();
         while (it.next()) |entry| {
             const pin = switch (entry.value_ptr.location) {
                 .pin => |pin| pin,
                 .virtual => continue,
             };
-            if (!pin.garbage) continue;
+            if (!pin.garbage) {
+                retained_pin = true;
+                continue;
+            }
 
             entry.value_ptr.deinit(s);
             self.removePlacementByPtr(entry.key_ptr);
             removed = true;
         }
+        self.may_have_pin_placements = retained_pin;
 
         return removed;
     }
@@ -402,6 +415,7 @@ pub const ImageStorage = struct {
         var it = self.placements.iterator();
         while (it.next()) |entry| entry.value_ptr.deinit(s);
         self.placements.clearRetainingCapacity();
+        self.may_have_pin_placements = false;
     }
 
     fn removePlacementsByImageId(
@@ -1133,6 +1147,7 @@ test "storage: adding placement reclaims garbage placements" {
     try s.addPlacement(io, alloc, t.screens.active, 1, 0, .{
         .location = .{ .pin = old_pin },
     });
+    try testing.expect(s.may_have_pin_placements);
     old_pin.garbage = true;
 
     const new_pin = try trackPin(&t, .{ .x = 1, .y = 1 });
@@ -1152,6 +1167,15 @@ test "storage: adding placement reclaims garbage placements" {
             .placement_id = .{ .tag = .internal, .id = 1 },
         }).?.location.pin,
     );
+
+    // Once the last pin-backed placement becomes garbage, a full sweep can
+    // prove that subsequent virtual placements do not need another scan.
+    new_pin.garbage = true;
+    try s.addPlacement(io, alloc, t.screens.active, 1, 0, .{
+        .location = .{ .virtual = {} },
+    });
+    try testing.expect(!s.may_have_pin_placements);
+    try testing.expectEqual(@as(usize, 1), s.placements.count());
 }
 
 test "storage: placement count limit permits replacement" {
@@ -1165,6 +1189,7 @@ test "storage: placement count limit permits replacement" {
     defer s.deinit(alloc, t.screens.active);
     try s.addImage(io, alloc, t.screens.active, .{ .id = 1 });
     try s.addPlacement(io, alloc, t.screens.active, 1, 1, .{ .location = .{ .virtual = {} } });
+    try testing.expect(!s.may_have_pin_placements);
 
     const img = s.images.getPtr(1).?;
     img.metadata.placement_count = std.math.maxInt(@TypeOf(img.metadata.placement_count));
