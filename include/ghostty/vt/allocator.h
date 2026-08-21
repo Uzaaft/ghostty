@@ -29,16 +29,15 @@
  *
  * **For the common case, you can pass NULL as the allocator for any
  * function that accepts one,** and libghostty will use a default allocator.
- * The default allocator will be libc malloc/free if libc is linked. 
- * Otherwise, a custom allocator is used (currently Zig's SMP allocator)
- * that doesn't require any external dependencies.
+ * The default allocator will be libc malloc/free if libc is linked. On
+ * WebAssembly, Ghostty uses the linear-memory allocator. Native freestanding
+ * targets have no default heap, so NULL uses an allocator that always fails.
  *
  * ## Basic Usage
  *
- * For simple use cases, you can ignore this interface entirely by passing NULL
- * as the allocator parameter to functions that accept one. This will use the
- * default allocator (typically libc malloc/free, if libc is linked, but
- * we provide our own default allocator if libc isn't linked).
+ * For hosted and WebAssembly builds, you can ignore this interface entirely
+ * by passing NULL as the allocator parameter. Native freestanding builds must
+ * provide a custom allocator for operations that allocate memory.
  *
  * To use a custom allocator:
  * 1. Implement the GhosttyAllocatorVtable function pointers
@@ -74,9 +73,9 @@
  *
  * @ingroup allocator
  *
- * If you're not going to use a custom allocator, you can ignore all of
- * this. All functions that take an allocator pointer allow NULL to use a
- * default allocator.
+ * If you're not going to use a custom allocator, you can ignore all of this
+ * on hosted and WebAssembly builds. Native freestanding builds must provide
+ * an allocator for operations that allocate memory.
  *
  * The interface is based on the Zig allocator interface. I'll say up front
  * that it is easy to look at this interface and think "wow, this is really
@@ -106,8 +105,9 @@ typedef struct {
      *
      * @param ctx The allocator context
      * @param len Number of bytes to allocate
-     * @param alignment Required alignment for the allocation. Guaranteed to
-     *   be a power of two between 1 and 16 inclusive.
+     * @param alignment Base-2 logarithm of the required byte alignment. For
+     *   example, 0 means 1-byte alignment, 4 means 16-byte alignment, and 12
+     *   means 4096-byte alignment.
      * @param ret_addr First return address of the allocation call stack (0 if not provided)
      * @return Pointer to allocated memory, or NULL if allocation failed
      */
@@ -182,8 +182,9 @@ typedef struct {
  *
  * For functions that take an allocator pointer, a NULL pointer indicates
  * that the default allocator should be used. The default allocator will 
- * be libc malloc/free if we're linking to libc. If libc isn't linked,
- * a custom allocator is used (currently Zig's SMP allocator).
+ * be libc malloc/free if we're linking to libc. WebAssembly uses its linear
+ * memory allocator. On native freestanding targets, the default allocator
+ * always fails.
  *
  * @ingroup allocator
  *

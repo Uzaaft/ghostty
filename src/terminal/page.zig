@@ -1814,7 +1814,16 @@ pub const Page = struct {
 /// The standard capacity is chosen as the fast-path for allocation since
 /// pages of standard capacity use a pooled allocator instead of single-use
 /// mmaps.
-pub const std_capacity: Capacity = .{
+pub const std_capacity: Capacity = if (builtin.os.tag == .freestanding and
+    !builtin.target.cpu.arch.isWasm()) .{
+    // The normal page is roughly 512 KiB, which is a lot for an embedded
+    // heap. This keeps the pooled fast path for a typical 80x24 terminal;
+    // larger terminals still use non-standard pages.
+    .cols = 80,
+    .rows = 24,
+    .styles = 32,
+    .grapheme_bytes = 512,
+} else .{
     .cols = 215,
     .rows = 215,
     .styles = 128,

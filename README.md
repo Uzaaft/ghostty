@@ -159,6 +159,21 @@ is compatible for macOS, Linux, Windows, and WebAssembly. The functionality
 is extremely stable (since its been proven in Ghostty GUI for a long time),
 but the API signatures are still in flux.
 
+libghostty-vt can also be built as a native freestanding static library for
+embedded targets. For example, a Cortex-M4 archive without libc can be built
+with:
+
+```shell
+zig build -Demit-lib-vt -Dtarget=thumb-freestanding-eabi \
+  -Dcpu=cortex_m4 -Doptimize=ReleaseSmall
+```
+
+The archive is installed as `zig-out/lib/libghostty-vt.a` together with the C
+headers under `zig-out/include`. Native freestanding callers must pass a
+`GhosttyAllocator`; there is no implicit platform heap when `NULL` is passed.
+OS-backed filesystem functionality and Kitty graphics are disabled. Input,
+terminal state, rendering state, and callback-driven effects remain available.
+
 `libghostty` is already heavily in use. See [`examples`](https://github.com/ghostty-org/ghostty/tree/main/example)
 for small examples of using `libghostty` in C and Zig or the
 [Ghostling](https://github.com/ghostty-org/ghostling) project for a

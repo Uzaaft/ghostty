@@ -105,7 +105,7 @@ const TerminalWrapper = struct {
     io: Io,
     /// We also need to store a temp dir path for some operations (e.g., kitty
     /// graphics). This provides stable storage for the API calls.
-    tmp_dir_path: [max_path_bytes]u8,
+    tmp_dir_path: if (build_options.kitty_graphics) [max_path_bytes]u8 else void,
     /// The terminfo name reported for XTGETTCAP "TN". The stream handler holds
     /// a slice into this.
     terminfo_name_buf: [Handler.max_terminfo_name_bytes]u8,
@@ -530,7 +530,7 @@ fn wrap(
     wrapper.* = .{
         .terminal = t,
         .io = io,
-        .tmp_dir_path = undefined,
+        .tmp_dir_path = if (build_options.kitty_graphics) undefined else {},
         .terminfo_name_buf = undefined,
         .stream = Stream.init(.{
             .allocator = alloc,

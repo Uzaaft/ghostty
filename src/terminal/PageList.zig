@@ -29,14 +29,14 @@ const Page = pagepkg.Page;
 const Row = pagepkg.Row;
 
 const log = std.log.scoped(.page_list);
+const native_freestanding = builtin.os.tag == .freestanding and
+    !builtin.target.cpu.arch.isWasm();
 
-/// The number of PageList.Nodes we preheat the pool with. A node is
-/// a very small struct so we can afford to preheat many, but the exact
-/// number is uncertain. Any number too large is wasting memory, any number
-/// too small will cause the pool to have to allocate more memory later.
-/// This should be set to some reasonable minimum that we expect a terminal
-/// window to scroll into quickly.
-const page_preheat = 4;
+/// The number of PageList nodes and standard page buffers we preheat. We use
+/// four normally so we don't have to allocate as soon as a terminal scrolls.
+/// Native freestanding targets start with one so a new terminal doesn't
+/// reserve scrollback memory it may never use.
+const page_preheat = if (native_freestanding) 1 else 4;
 
 /// The list of pages in the screen. These are expected to be in order
 /// where the first page is the topmost page (scrollback) and the last is
@@ -538,11 +538,13 @@ fn initialCapacity(cols: size.CellCountInt) Capacity {
     return cap;
 }
 
-/// This is the page allocator we'll use for all our underlying
-/// VM page allocations.
-inline fn pageAllocator() Allocator {
+inline fn pageAllocator(alloc: Allocator) Allocator {
     // In tests we use our testing allocator so we can detect leaks.
     if (builtin.is_test) return std.testing.allocator;
+
+    // Native freestanding targets don't have an OS page allocator, so use
+    // the allocator provided by the embedder.
+    if (native_freestanding) return alloc;
 
     // On non-macOS we use our standard Zig page allocator.
     if (!builtin.target.os.tag.isDarwin()) return std.heap.page_allocator;
@@ -614,7 +616,7 @@ pub fn init(
     try tw.check(.init_memory_pool);
     var pool = try MemoryPool.init(
         alloc,
-        pageAllocator(),
+        pageAllocator(alloc),
         page_preheat,
     );
     errdefer pool.deinit();
@@ -1117,7 +1119,7 @@ pub fn clone(
     // Setup our pool
     var pool: MemoryPool = try .init(
         alloc,
-        pageAllocator(),
+        pageAllocator(alloc),
         page_count,
     );
     errdefer pool.deinit();
@@ -7492,7 +7494,7 @@ pub const Builder = struct {
         return .{
             .pool = try MemoryPool.init(
                 alloc,
-                pageAllocator(),
+                pageAllocator(alloc),
                 page_preheat,
             ),
             .options = options,
