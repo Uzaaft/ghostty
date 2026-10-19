@@ -78,6 +78,10 @@ pub fn build(b: *std.Build) !void {
         "test-lib-vt-schema",
         "Validate the libghostty-vt ABI type manifest",
     );
+    const test_lib_vt_wasm_log_build_step = b.step(
+        "test-lib-vt-wasm-log-build",
+        "Build the libghostty-vt Wasm archive logging test fixture",
+    );
     const test_valgrind_step = b.step(
         "test-valgrind",
         "Run tests under valgrind",
@@ -162,6 +166,46 @@ pub fn build(b: *std.Build) !void {
         b,
         &mod,
     );
+    if (config.target.result.cpu.arch.isWasm()) {
+        // Link the archive rather than compiling vt_c as an executable: those
+        // artifacts deliberately use different root logging configurations.
+        const log_fixture = b.addExecutable(.{
+            .name = "wasm-log",
+            .root_module = b.createModule(.{
+                .target = config.target,
+                .optimize = config.optimize,
+            }),
+        });
+        log_fixture.entry = .disabled;
+        log_fixture.root_module.export_symbol_names = &.{
+            "callback_pointer",
+            "ghostty_sys_set",
+            "ghostty_terminal_new",
+            "ghostty_terminal_free",
+            "ghostty_terminal_vt_write",
+            "ghostty_wasm_alloc",
+            "ghostty_wasm_free",
+            "ghostty_wasm_alloc_opaque",
+            "ghostty_wasm_free_opaque",
+            "ghostty_wasm_take_opaque",
+        };
+        log_fixture.root_module.addIncludePath(b.path("include"));
+        log_fixture.root_module.addCSourceFile(.{
+            .file = b.path("test/wasm-log.c"),
+            .flags = &.{ "-Wall", "-Wextra", "-Werror" },
+        });
+        log_fixture.root_module.addObjectFile(libghostty_vt_static.output);
+        const install_fixture = b.addInstallBinFile(
+            log_fixture.getEmittedBin(),
+            "wasm-log.wasm",
+        );
+        test_lib_vt_wasm_log_build_step.dependOn(&install_fixture.step);
+    } else {
+        try test_lib_vt_wasm_log_build_step.addError(
+            "Wasm logging tests require a WebAssembly target",
+            .{},
+        );
+    }
     if (config.is_dep) {
         // If we're a dependency, we need to install everything as-is
         // so that dep.artifact("ghostty-vt-static") works.

@@ -715,10 +715,14 @@ jobs:
 
       - name: Build ReleaseFast WASM
         run: |
-          nix develop -c zig build \
+          nix develop -c zig build install test-lib-vt-wasm-log-build \
             -Demit-lib-vt \
             -Dtarget=wasm32-freestanding \
             -Doptimize=ReleaseFast
+
+      - name: Test ReleaseFast WASM logging
+        run: |
+          nix develop -c node test/wasm-log.mjs zig-out/bin/wasm-log.wasm
 
       - name: Optimize ReleaseFast WASM
         run: |
@@ -734,10 +738,14 @@ jobs:
 
       - name: Build ReleaseSmall WASM
         run: |
-          nix develop -c zig build \
+          nix develop -c zig build install test-lib-vt-wasm-log-build \
             -Demit-lib-vt \
             -Dtarget=wasm32-freestanding \
             -Doptimize=ReleaseSmall
+
+      - name: Test ReleaseSmall WASM logging
+        run: |
+          nix develop -c node test/wasm-log.mjs zig-out/bin/wasm-log.wasm
 
       - name: Validate WASM ABI manifest
         run: |
@@ -775,6 +783,17 @@ jobs:
         run: |
           nix develop -c node test/wasm-alloc.mjs ghostty-vt.wasm
           nix develop -c node test/wasm-alloc.mjs ghostty-vt-small.wasm
+
+      - name: Build Debug WASM
+        run: |
+          nix develop -c zig build test-lib-vt-wasm-log-build \
+            -Demit-lib-vt \
+            -Dtarget=wasm32-freestanding \
+            -Doptimize=Debug
+
+      - name: Test Debug WASM logging
+        run: |
+          nix develop -c node test/wasm-log.mjs zig-out/bin/wasm-log.wasm
 
   # Compile-only checks for the -Dvt-features flags so that future changes
   # don't regress any feature combination.
